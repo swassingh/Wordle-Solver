@@ -70,6 +70,11 @@ python -m src.cli.main benchmark 100
 python -m src.cli.main train
 ```
 
+### Using the ML Solver
+```bash
+python -m src.cli.main daily --solver ml --model-path models/wordle_model.pkl
+```
+
 ## Project Structure
 
 - `src/domain/`: Core data structures (game state, word lists)
