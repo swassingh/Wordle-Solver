@@ -23,6 +23,11 @@ A machine learning-powered solver for the New York Times Wordle game. This proje
    python scripts/download_wordlists.py
    ```
 
+## Hosted Version
+
+You can try WordleAI in your browser here (no local setup required):  
+`https://wordle-solver-production-169e.up.railway.app/web/`
+
 ## Usage
 
 ### 1. Start API & Web UI (recommended)
