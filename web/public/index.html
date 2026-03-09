@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WordleAI – Online Helper</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root {
+        --bg-color: #121213;
+        --tile-empty: #3a3a3c;
+        --tile-border: #3a3a3c;
+        --tile-correct: #538d4e;
+        --tile-present: #b59f3b;
+        --tile-absent: #3a3a3c;
+        --panel-bg: #1a1a1b;
+        --accent: #6aaa64;
+        --text-color: #f8f8f8;
+        --muted-text: #aaaaaa;
+      }
+
+      * {
+        box-sizing: border-box;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg-color);
+        color: var(--text-color);
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      header {
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #3a3a3c;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 32px 24px 40px;
+        gap: 32px;
+      }
+
+      #wordle-iframe-container {
+        width: 400px;
+        max-width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+      }
+
+      #wordle-iframe {
+        width: 100%;
+        height: 600px;
+        border: none;
+        border-radius: 12px;
+        background: var(--panel-bg);
+      }
+
+      #iframe-fallback {
+        width: 100%;
+      }
+
+      #game-area {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 20px;
+      }
+
+      #board {
+        display: grid;
+        grid-template-rows: repeat(6, 1fr);
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        width: min(350px, 90vw);
+        aspect-ratio: 5 / 6;
+      }
+
+      .board-tile {
+        border: 2px solid var(--tile-border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-transform: uppercase;
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--text-color);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .board-tile.filled {
+        border-color: var(--tile-empty);
+      }
+
+      #keyboard {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .keyboard-row {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .key {
+        min-width: 40px;
+        padding: 10px 6px;
+        border-radius: 4px;
+        border: none;
+        background: #818384;
+        color: #f8f8f8;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        text-transform: uppercase;
+      }
+
+      .key.wide {
+        min-width: 64px;
+        padding-inline: 10px;
+      }
+
+      .key:active {
+        filter: brightness(0.9);
+      }
+
+      #suggestions-panel {
+        width: 260px;
+        max-width: 100%;
+        background: var(--panel-bg);
+        border-radius: 12px;
+        padding: 14px 16px 16px;
+        font-size: 13px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #suggestions-panel h2 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      #suggestions-panel p {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted-text);
+      }
+
+      #suggested-word {
+        margin: 4px 0 6px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #3a3a3c;
+        background: #18181a;
+        text-align: center;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        min-height: 32px;
+      }
+
+      .panel-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+      }
+
+      button {
+        border-radius: 999px;
+        border: none;
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--text-color);
+        border: 1px solid #444;
+      }
+
+      #status {
+        font-size: 12px;
+        color: var(--muted-text);
+        margin-top: 4px;
+        min-height: 16px;
+      }
+
+      #remaining {
+        font-size: 12px;
+        color: var(--muted-text);
+        margin-top: 2px;
+        max-height: 80px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 1200px) {
+        main {
+          gap: 24px;
+        }
+
+        #wordle-iframe-container {
+          width: 350px;
+        }
+
+        #wordle-iframe {
+          height: 550px;
+        }
+      }
+
+      @media (max-width: 900px) {
+        main {
+          flex-direction: column;
+          align-items: center;
+          gap: 24px;
+        }
+
+        #wordle-iframe-container {
+          width: 100%;
+          max-width: 500px;
+          order: 1;
+        }
+
+        #wordle-iframe {
+          height: 500px;
+        }
+
+        #game-area {
+          order: 2;
+        }
+
+        #suggestions-panel {
+          width: 100%;
+          max-width: 360px;
+          order: 3;
+        }
+      }
+
+      @media (max-width: 600px) {
+        main {
+          padding: 20px 16px 32px;
+          gap: 20px;
+        }
+
+        #wordle-iframe-container {
+          max-width: 100%;
+        }
+
+        #wordle-iframe {
+          height: 450px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>WORDLEAI</h1>
+      <span style="font-size: 13px; color: #999">Helper for the daily NYT Wordle</span>
+    </header>
+
+    <main>
+      <div id="wordle-iframe-container">
+        <iframe id="wordle-iframe" src="https://www.nytimes.com/games/wordle/index.html" title="NYT Wordle Game"></iframe>
+        <div id="iframe-fallback" style="display: none;">
+          <div style="padding: 40px; text-align: center; background: var(--panel-bg); border-radius: 12px; border: 1px solid #3a3a3c;">
+            <p style="margin: 0 0 16px; color: var(--muted-text);">Wordle cannot be embedded due to security restrictions.</p>
+            <a href="https://www.nytimes.com/games/wordle/index.html" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 10px 20px; background: var(--accent); color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600;">Open NYT Wordle in new tab</a>
+          </div>
+        </div>
+      </div>
+
+      <div id="game-area">
+        <div id="board"></div>
+        <div id="keyboard"></div>
+      </div>
+
+      <aside id="suggestions-panel">
+        <h2>Suggestions</h2>
+        <p>
+          Enter your guesses here to get AI suggestions. Suggestions appear automatically when you complete a row and set feedback colors.
+        </p>
+        <p style="font-size: 11px; color: var(--muted-text); margin-top: 4px;">
+          Note: Due to browser security, typing in the Wordle iframe cannot be tracked. Type directly in this helper board.
+        </p>
+        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+          <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-text);">Strategy</span>
+          <select id="strategy-select" style="flex: 1; background:#18181a; color:#f8f8f8; border-radius:6px; border:1px solid #3a3a3c; padding:4px 6px; font-size:12px;">
+            <option value="ml_min_guess" selected>ML (min guesses)</option>
+            <option value="ml_classic">ML (classic)</option>
+            <option value="info">Information theory</option>
+          </select>
+        </div>
+        <div id="suggested-word">Press ENTER or “Get suggestion”</div>
+        <div class="panel-actions">
+          <button class="secondary" id="reset-btn">New puzzle</button>
+          <button class="primary" id="suggestion-btn">Get suggestion</button>
+        </div>
+        <div id="status"></div>
+        <div id="remaining"></div>
+      </aside>
+    </main>
+
+    <script src="/web/src/app.js" type="module"></script>
+  </body>
+</html>
+
+

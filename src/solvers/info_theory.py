@@ -3,8 +3,10 @@
 import math
 from collections import Counter
 from typing import Set, List, Optional
+
 from src.solvers.base import BaseSolver
 from src.domain.game_state import GameState
+from src.domain.word_lists import WordLists
 from src.game.feedback import calculate_feedback, FeedbackType
 
 
@@ -26,6 +28,11 @@ class InformationTheorySolver(BaseSolver):
         """
         super().__init__(word_lists)
         self.use_precomputed = use_precomputed
+
+        # Precompute letter / positional statistics over the answer list
+        self._answer_list: List[str] = self.word_lists.get_answer_list()
+        self._global_letter_freq = self._compute_global_letter_frequencies()
+        self._positional_letter_freq = self._compute_positional_letter_frequencies()
     
     def make_guess(self, game_state: GameState) -> str:
         """Make a guess that maximizes expected information gain.
@@ -61,16 +68,24 @@ class InformationTheorySolver(BaseSolver):
             if answer_candidates:
                 return list(answer_candidates)[0]
         
-        # Calculate expected information gain for each candidate word
-        best_word = None
-        best_score = -float('inf')
+        # Calculate expected information gain for each candidate word.
+        # To better optimize for *minimum guesses*, we combine entropy with:
+        # - dynamic answer bias (stronger when few candidates remain)
+        # - simple positional / letter-coverage heuristics
+        best_word: Optional[str] = None
+        best_score = -float("inf")
         
         # Limit search space for performance
         # For large candidate sets, only evaluate a subset
         words_to_evaluate = self._get_words_to_evaluate(candidates, game_state)
         
         for word in words_to_evaluate:
-            score = self._calculate_expected_information_gain(word, candidates)
+            score = self._score_candidate(
+                word=word,
+                candidates=candidates,
+                guess_index=len(game_state.guesses),
+            )
+
             if score > best_score:
                 best_score = score
                 best_word = word
@@ -104,6 +119,7 @@ class InformationTheorySolver(BaseSolver):
         # 2. Words with diverse letter patterns
         # 3. Limit to top 200 for performance
         
+        # Always ensure all words from the official answer list are considered as answers.
         answer_words = [w for w in candidates_list if self.word_lists.is_valid_answer(w)]
         
         if answer_words:
@@ -116,6 +132,82 @@ class InformationTheorySolver(BaseSolver):
         
         # No answer words, use diverse guess words
         return self._get_diverse_words(candidates_list, max_count=200)
+
+    # --- Heuristic scoring helpers -------------------------------------------------
+
+    def _compute_global_letter_frequencies(self) -> Counter:
+        """Compute overall letter frequency across all answer words."""
+        freq = Counter()
+        for word in self._answer_list:
+            for ch in set(word):  # presence-based frequency
+                freq[ch] += 1
+        return freq
+
+    def _compute_positional_letter_frequencies(self) -> List[Counter]:
+        """Compute position-wise letter frequency across answer words."""
+        pos_freq: List[Counter] = [Counter() for _ in range(5)]
+        for word in self._answer_list:
+            if len(word) != 5:
+                continue
+            for i, ch in enumerate(word):
+                pos_freq[i][ch] += 1
+        return pos_freq
+
+    def _letter_coverage_score(self, word: str) -> float:
+        """Score word by how well it covers common letters/positions."""
+        seen = set()
+        score = 0.0
+        for i, ch in enumerate(word):
+            if ch in seen:
+                continue
+            seen.add(ch)
+            score += self._global_letter_freq.get(ch, 0)
+            score += self._positional_letter_freq[i].get(ch, 0)
+        # Normalize roughly by number of answers to keep this term small
+        normalizer = max(len(self._answer_list), 1)
+        return score / normalizer
+
+    def _score_candidate(
+        self,
+        word: str,
+        candidates: Set[str],
+        guess_index: int,
+    ) -> float:
+        """Score a candidate word using entropy + heuristics.
+
+        Args:
+            word: candidate word
+            candidates: remaining candidate set
+            guess_index: 0-based index of the current guess
+        """
+        entropy_score = self._calculate_expected_information_gain(word, candidates)
+
+        # Dynamic answer bias: small early, larger late-game.
+        remaining = len(candidates)
+        is_answer = 1.0 if self.word_lists.is_valid_answer(word) else 0.0
+
+        if remaining > 50:
+            answer_weight = 0.05
+        elif remaining > 15:
+            answer_weight = 0.15
+        else:
+            answer_weight = 0.4
+
+        answer_bonus = answer_weight * is_answer
+
+        # Letter coverage heuristic: prefer words that cover common letters,
+        # especially in early guesses when the space is large.
+        coverage_weight = 0.05 if remaining > 50 else 0.02
+        coverage_score = coverage_weight * self._letter_coverage_score(word)
+
+        # Penalize repeated letters early when many candidates remain.
+        repeated_penalty = 0.0
+        if remaining > 80:
+            unique_letters = len(set(word))
+            if unique_letters < 5:
+                repeated_penalty = 0.08 * (5 - unique_letters)
+
+        return entropy_score + answer_bonus + coverage_score - repeated_penalty
     
     def _get_diverse_words(self, words: List[str], max_count: int) -> List[str]:
         """Select diverse words (different letter patterns).

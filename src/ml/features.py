@@ -203,6 +203,8 @@ class FeatureExtractor:
         candidate = candidate.upper()
         
         if not remaining:
+            # 5 positional freqs + 1 overall freq + 1 in-remaining + 1 similarity +
+            # 1 log(count) + 1 is_answer + 1 normalized remaining size = 10
             return [0.0] * 10
         
         remaining_list = list(remaining)
@@ -219,7 +221,7 @@ class FeatureExtractor:
         letter_counts = Counter(all_letters)
         candidate_letters = set(candidate)
         
-        avg_freq = sum(letter_counts.get(c, 0) for c in candidate_letters) / len(candidate_letters)
+        avg_freq = sum(letter_counts.get(c, 0) for c in candidate_letters) / max(len(candidate_letters), 1)
         features.append(avg_freq / (len(remaining_list) * 5.0))
         
         # Is candidate in remaining words (good if we're narrowing down)
@@ -239,6 +241,15 @@ class FeatureExtractor:
         
         # Remaining words count (log scale)
         features.append(np.log1p(len(remaining)) / np.log1p(10000))
+
+        # Is this candidate in the official answer list?
+        is_answer = 1.0 if self.word_lists.is_valid_answer(candidate) else 0.0
+        features.append(is_answer)
+
+        # Normalized remaining candidate set size
+        remaining_size = len(remaining_list)
+        total_words = max(len(self.word_lists.all_valid_words), 1)
+        features.append(remaining_size / total_words)
         
         return features
     

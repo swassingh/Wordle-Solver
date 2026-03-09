@@ -1,2 +1,2 @@
-"""Wordle Solver package."""
+"""WordleAI package."""
 

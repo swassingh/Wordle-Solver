@@ -1,4 +1,4 @@
-"""Setup script for Wordle Solver."""
+"""Setup script for WordleAI."""
 
 from setuptools import setup, find_packages
 from pathlib import Path
@@ -18,19 +18,19 @@ if requirements_file.exists():
     ]
 
 setup(
-    name="wordle-solver",
+    name="wordleai",
     version="0.1.0",
     description="ML-powered Wordle puzzle solver",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Wordle Solver Team",
+    author="WordleAI Team",
     packages=find_packages(where="."),
     package_dir={"": "."},
     python_requires=">=3.8",
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "wordle-solver=src.cli.main:cli",
+            "wordleai=src.cli.main:cli",
         ],
     },
     classifiers=[

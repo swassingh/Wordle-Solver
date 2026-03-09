@@ -1,4 +1,4 @@
-# SPEC: Wordle Solver (ML-Powered)
+# SPEC: WordleAI (ML-Powered)
 
 ## Problem
 People are curious about how machine learning can solve word games like Wordle. There's educational and entertainment value in seeing an AI model systematically solve the New York Times Wordle puzzle, demonstrating:
@@ -19,10 +19,11 @@ People are curious about how machine learning can solve word games like Wordle. 
 - Model that can solve puzzles within the 6-guess limit
 - Support for the standard Wordle word list and rules
 - Success rate tracking and basic performance metrics
+ - Simple web UI and HTTP API to visualize and control the solver (NYT-style board, suggestions panel, strategy selector)
 
 ## Non-goals
-- Building a full Wordle game interface for human players
-- Creating a web application or GUI (MVP can be CLI/script-based)
+- Building a full standalone Wordle clone for human players (the web UI is a helper overlay that mirrors the NYT board)
+- Creating a complex multi-user web application (current web UI is a single-user helper)
 - Supporting multiple languages or word variants
 - Real-time solving with sub-second response times (can be slower for MVP)
 - Handling edge cases like invalid words or API failures (basic error handling only)
@@ -34,6 +35,7 @@ People are curious about how machine learning can solve word games like Wordle. 
 - Given multiple puzzles, when the model solves them, then we can track and display success rate and average number of guesses
 - Given the model, when it's trained, then it should be able to solve new puzzles it hasn't seen before
 - Given a puzzle-solving session, when the model completes it, then the solving process should be logged/displayed showing each guess and feedback
+ - Given a benchmark set of puzzles, when we run the min-guess strategy, then the average number of guesses is ≤ 4.0 while success rate remains ≥ 80%
 
 ## API Contract
 **NYT Wordle Integration:**

@@ -1,13 +1,15 @@
 """ML-based Wordle solver."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
+
 import numpy as np
+
 from src.solvers.base import BaseSolver
 from src.solvers.info_theory import InformationTheorySolver
 from src.domain.game_state import GameState
 from src.domain.word_lists import WordLists
-from src.ml.model import WordleModel
+from src.ml.model import WordleModel, ModelMode
 from src.ml.features import FeatureExtractor
 
 
@@ -19,7 +21,8 @@ class MLSolver(BaseSolver):
         model_path: Optional[Path] = None,
         word_lists: Optional[WordLists] = None,
         fallback_to_info_theory: bool = True,
-        confidence_threshold: float = 0.3
+        confidence_threshold: float = 0.3,
+        mode: ModelMode = "classification",
     ):
         """Initialize ML solver.
         
@@ -27,7 +30,8 @@ class MLSolver(BaseSolver):
             model_path: Path to trained model file. If None, model must be loaded separately.
             word_lists: WordLists instance. If None, creates a new one.
             fallback_to_info_theory: If True, fall back to info theory solver when needed.
-            confidence_threshold: Minimum confidence to use ML prediction.
+            confidence_threshold: Minimum confidence to use ML prediction (classification mode).
+            mode: \"classification\" (default) or \"regression\" (min-guess optimization).
         """
         super().__init__(word_lists)
         self.model: Optional[WordleModel] = None
@@ -35,10 +39,11 @@ class MLSolver(BaseSolver):
         self.fallback_solver: Optional[InformationTheorySolver] = None
         self.fallback_to_info_theory = fallback_to_info_theory
         self.confidence_threshold = confidence_threshold
+        self.mode: ModelMode = mode
         
         if model_path is not None:
             self.load_model(model_path)
-        
+
         if fallback_to_info_theory:
             self.fallback_solver = InformationTheorySolver(self.word_lists)
     
@@ -55,7 +60,7 @@ class MLSolver(BaseSolver):
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")
         
-        self.model = WordleModel()
+        self.model = WordleModel(model_mode=self.mode)
         self.model.load(model_path)
         self.model.set_feature_extractor(self.feature_extractor)
         self.model.set_word_lists(self.word_lists)
@@ -102,41 +107,46 @@ class MLSolver(BaseSolver):
                 candidate_list = answer_candidates[:100] + guess_candidates[:100]
             
             # Extract features
-            X = np.array([
-                self.feature_extractor.extract_features(game_state, word)
-                for word in candidate_list
-            ])
-            
-            # Get predictions with probabilities
-            words_pred, probabilities = self.model.predict_proba(X)
-            
-            # Get top prediction for each candidate
-            best_word = None
-            best_score = -1.0
-            
-            for i, word in enumerate(candidate_list):
-                # Find this word in predictions
-                word_idx = np.where(words_pred[i] == word)[0]
-                if len(word_idx) > 0:
-                    prob = probabilities[i][word_idx[0]]
-                    if prob > best_score:
-                        best_score = prob
-                        best_word = word
-            
-            # Use ML prediction if confidence is high enough
-            if best_word and best_score >= self.confidence_threshold:
-                return best_word
-            
-            # Fallback to info theory if confidence too low
-            if self.fallback_solver is not None:
-                return self.fallback_solver.make_guess(game_state)
-            
-            # Last resort: return highest probability word
-            if best_word:
-                return best_word
-            
-            # Final fallback: return first candidate
-            return candidate_list[0]
+            X = np.array(
+                [
+                    self.feature_extractor.extract_features(game_state, word)
+                    for word in candidate_list
+                ]
+            )
+
+            if self.mode == "classification":
+                # Classification: use probabilities
+                words_pred, probabilities = self.model.predict_proba(X)
+
+                best_word = None
+                best_score = -1.0
+
+                for i, word in enumerate(candidate_list):
+                    word_idx = np.where(words_pred[i] == word)[0]
+                    if len(word_idx) > 0:
+                        prob = probabilities[i][word_idx[0]]
+                        if prob > best_score:
+                            best_score = prob
+                            best_word = word
+
+                if best_word and best_score >= self.confidence_threshold:
+                    return best_word
+
+                if self.fallback_solver is not None:
+                    return self.fallback_solver.make_guess(game_state)
+
+                if best_word:
+                    return best_word
+
+                return candidate_list[0]
+
+            # Regression: choose candidate with minimum predicted cost (expected guesses)
+            costs = self.model.predict(X)
+            # Defensive: ensure numeric
+            costs = costs.astype(float)
+            best_idx = int(np.argmin(costs))
+            best_word = candidate_list[best_idx]
+            return best_word
         
         except Exception as e:
             # If ML prediction fails, use fallback

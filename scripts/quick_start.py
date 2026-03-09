@@ -10,7 +10,7 @@ sys.path.insert(0, str(project_root))
 def main():
     """Quick start setup."""
     print("="*50)
-    print("Wordle Solver - Quick Start")
+    print("WordleAI - Quick Start")
     print("="*50)
     
     # Step 1: Download word lists

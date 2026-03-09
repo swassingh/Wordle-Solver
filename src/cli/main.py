@@ -1,4 +1,4 @@
-"""Command-line interface for Wordle Solver."""
+"""Command-line interface for WordleAI."""
 
 import sys
 import random
@@ -10,6 +10,7 @@ from src.game.simulator import WordleSimulator
 from src.game.feedback import parse_feedback_string
 from src.solvers.info_theory import InformationTheorySolver
 from src.solvers.ml_solver import MLSolver
+from src.solvers.strategy import SolverStrategy
 from src.metrics.tracker import MetricsTracker
 
 
@@ -20,18 +21,53 @@ sys.path.insert(0, str(project_root))
 
 @click.group()
 def cli():
-    """Wordle Solver - ML-powered Wordle puzzle solver."""
+    """WordleAI - ML-powered Wordle puzzle solver."""
     pass
+
+
+def _build_strategy(
+    word_lists: WordLists,
+    strategy: str,
+    classic_model: Path | None,
+    min_guess_model: Path | None,
+) -> SolverStrategy | InformationTheorySolver | MLSolver:
+    """Internal helper to build the appropriate solver or strategy wrapper."""
+    # For backwards compatibility, allow direct info / ml usage when strategy not used.
+    if strategy == "":
+        # Legacy path; handled by caller.
+        raise ValueError("strategy must not be empty")
+
+    if strategy == "info":
+        return InformationTheorySolver(word_lists)
+
+    # For ML-based strategies, build a SolverStrategy
+    return SolverStrategy(
+        word_lists=word_lists,
+        classic_model_path=classic_model,
+        min_guess_model_path=min_guess_model,
+    )
 
 
 @cli.command()
 @click.argument('target_word')
-@click.option('--solver', type=click.Choice(['info', 'ml']), default='info',
-              help='Solver to use (info=information theory, ml=machine learning)')
-@click.option('--model-path', type=click.Path(exists=True),
-              help='Path to ML model file (required for ML solver)')
+@click.option(
+    '--strategy',
+    type=click.Choice(['info', 'ml_classic', 'ml_min_guess']),
+    default='info',
+    help='Solver strategy: info, ml_classic, or ml_min_guess',
+)
+@click.option(
+    '--classic-model',
+    type=click.Path(exists=True),
+    help='Path to classic ML model (classification). Used for ml_classic.',
+)
+@click.option(
+    '--min-guess-model',
+    type=click.Path(exists=True),
+    help='Path to min-guess ML model (regression). Used for ml_min_guess.',
+)
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed solving process')
-def solve(target_word: str, solver: str, model_path: str, verbose: bool):
+def solve(target_word: str, strategy: str, classic_model: str, min_guess_model: str, verbose: bool):
     """Solve a specific Wordle puzzle.
     
     TARGET_WORD: The 5-letter word to solve.
@@ -49,14 +85,15 @@ def solve(target_word: str, solver: str, model_path: str, verbose: bool):
         if not word_lists.is_valid_answer(target_word):
             click.echo(f"Warning: '{target_word}' is not in the answer list", err=True)
         
-        # Initialize solver
-        if solver == 'ml':
-            if not model_path:
-                click.echo("Error: --model-path required for ML solver", err=True)
-                sys.exit(1)
-            solver_obj = MLSolver(model_path=Path(model_path), word_lists=word_lists)
-        else:
-            solver_obj = InformationTheorySolver(word_lists)
+        # Initialize solver / strategy
+        classic_model_path = Path(classic_model) if classic_model else None
+        min_guess_model_path = Path(min_guess_model) if min_guess_model else None
+        solver_obj = _build_strategy(
+            word_lists=word_lists,
+            strategy=strategy,
+            classic_model=classic_model_path,
+            min_guess_model=min_guess_model_path,
+        )
         
         # Start game
         simulator.start_game(target_word)
@@ -70,7 +107,10 @@ def solve(target_word: str, solver: str, model_path: str, verbose: bool):
             game_state = simulator.get_current_state()
             
             try:
-                guess = solver_obj.make_guess(game_state)
+                if isinstance(solver_obj, SolverStrategy):
+                    guess = solver_obj.make_guess(strategy, game_state)
+                else:
+                    guess = solver_obj.make_guess(game_state)
             except (ValueError, IndexError) as e:
                 click.echo(f"\nError: {e}", err=True)
                 break
@@ -96,26 +136,38 @@ def solve(target_word: str, solver: str, model_path: str, verbose: bool):
 
 
 @cli.command()
-@click.option('--solver', type=click.Choice(['info', 'ml']), default='info',
-              help='Solver to use')
-@click.option('--model-path', type=click.Path(exists=True),
-              help='Path to ML model file')
+@click.option(
+    '--strategy',
+    type=click.Choice(['info', 'ml_classic', 'ml_min_guess']),
+    default='info',
+    help='Solver strategy: info, ml_classic, or ml_min_guess',
+)
+@click.option(
+    '--classic-model',
+    type=click.Path(exists=True),
+    help='Path to classic ML model (classification). Used for ml_classic.',
+)
+@click.option(
+    '--min-guess-model',
+    type=click.Path(exists=True),
+    help='Path to min-guess ML model (regression). Used for ml_min_guess.',
+)
 @click.option('--count', '-n', default=1, help='Number of random words to solve')
-def solve_random(solver: str, model_path: str, count: int):
+def solve_random(strategy: str, classic_model: str, min_guess_model: str, count: int):
     """Solve random Wordle puzzles."""
     try:
         word_lists = WordLists()
         answers = word_lists.get_answer_list()
         
-        # Initialize solver
-        if solver == 'ml':
-            if not model_path:
-                click.echo("Error: --model-path required for ML solver", err=True)
-                sys.exit(1)
-            solver_obj = MLSolver(model_path=Path(model_path), word_lists=word_lists)
-        else:
-            solver_obj = InformationTheorySolver(word_lists)
-        
+        classic_model_path = Path(classic_model) if classic_model else None
+        min_guess_model_path = Path(min_guess_model) if min_guess_model else None
+
+        solver_obj = _build_strategy(
+            word_lists=word_lists,
+            strategy=strategy,
+            classic_model=classic_model_path,
+            min_guess_model=min_guess_model_path,
+        )
         simulator = WordleSimulator(word_lists)
         tracker = MetricsTracker()
         
@@ -129,7 +181,10 @@ def solve_random(solver: str, model_path: str, count: int):
             while not simulator.is_game_over() and guesses_made < 6:
                 game_state = simulator.get_current_state()
                 try:
-                    guess = solver_obj.make_guess(game_state)
+                    if isinstance(solver_obj, SolverStrategy):
+                        guess = solver_obj.make_guess(strategy, game_state)
+                    else:
+                        guess = solver_obj.make_guess(game_state)
                 except (ValueError, IndexError):
                     break
                 
